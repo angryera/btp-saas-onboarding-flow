@@ -1,0 +1,51 @@
+_schema-version: "3.2"
+ID: s4accelerate-saas-provisioning
+version: 1.0.0
+description: Minimal SaaS provisioning handler (subscribe/unsubscribe) with XSUAA protection
+
+modules:
+  - name: s4accelerate-saas-provisioning-srv
+    type: nodejs
+    path: .
+    parameters:
+      disk-quota: 512M
+      memory: 256M
+    properties:
+      SAP_JWT_TRUST_ACL: '[{"clientid":"*","identityzone":"*"}]'
+    provides:
+      - name: srv-api
+        properties:
+          srv-url: ${default-url}
+    requires:
+      - name: s4accelerate-uaa
+      - name: s4accelerate-saas-registry
+
+resources:
+  - name: s4accelerate-uaa
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: xsuaa
+      service-plan: application
+      path: ./xs-security.json
+      config:
+        xsappname: s4accelerate-saas-${org}-${space}
+        tenant-mode: shared
+
+  - name: s4accelerate-saas-registry
+    type: org.cloudfoundry.managed-service
+    requires:
+      - name: srv-api
+    parameters:
+      service: saas-registry
+      service-plan: application
+      config:
+        xsappname: s4accelerate-saas-${org}-${space}
+        appName: s4accelerate-saas-provisioning-handler
+        displayName: S4Accelerate SaaS Provisioning Handler
+        description: Minimal SaaS provisioning callbacks (subscribe/unsubscribe) + platform tenant list
+        category: Assessment
+        appUrls:
+          onSubscription: ~{srv-api/srv-url}/callback/v1.0/tenants/{tenantId}
+          onUnSubscription: ~{srv-api/srv-url}/callback/v1.0/tenants/{tenantId}
+          getDependencies: ~{srv-api/srv-url}/callback/v1.0/dependencies
+

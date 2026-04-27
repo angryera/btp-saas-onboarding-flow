@@ -1,0 +1,23 @@
+{
+  "name": "s4accelerate-saas-provisioning-handler",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Minimal SaaS provisioning handler for BTP multi-tenant onboarding flow",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "audit": "node scripts/print-audit.js"
+  },
+  "dependencies": {
+    "@sap/xsenv": "^5.5.0",
+    "@sap/xssec": "^4.3.0",
+    "better-sqlite3": "^11.10.0",
+    "express": "^4.21.2",
+    "helmet": "^7.2.0",
+    "passport": "^0.7.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}

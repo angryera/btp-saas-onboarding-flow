@@ -1,0 +1,58 @@
+{
+  "description": "Security profile for S4Accelerate SaaS provisioning handler",
+  "scopes": [
+    {
+      "name": "$XSAPPNAME.Admin",
+      "description": "Tenant administrator"
+    },
+    {
+      "name": "$XSAPPNAME.Consultant",
+      "description": "Tenant consultant"
+    },
+    {
+      "name": "$XSAPPNAME.PlatformAdmin",
+      "description": "Platform administrator (provider-side)"
+    }
+  ],
+  "attributes": [
+    {
+      "name": "tenant",
+      "description": "Tenant isolation attribute (subscriber tenant identifier)",
+      "valueType": "string",
+      "valueRequired": false
+    }
+  ],
+  "role-templates": [
+    {
+      "name": "Admin",
+      "description": "Admin role template (tenant-level)",
+      "scope-references": ["$XSAPPNAME.Admin"],
+      "attribute-references": ["tenant"]
+    },
+    {
+      "name": "Consultant",
+      "description": "Consultant role template (tenant-level)",
+      "scope-references": ["$XSAPPNAME.Consultant"],
+      "attribute-references": ["tenant"]
+    },
+    {
+      "name": "PlatformAdmin",
+      "description": "Platform admin role template (provider-side)",
+      "scope-references": ["$XSAPPNAME.PlatformAdmin"]
+    }
+  ],
+  "role-collections": [
+    {
+      "name": "S4_Platform_Admin",
+      "description": "Platform administrators allowed to list all tenants",
+      "role-template-references": ["$XSAPPNAME.PlatformAdmin"]
+    }
+  ],
+  "oauth2-configuration": {
+    "redirect-uris": ["https://*.cfapps.*.hana.ondemand.com/**"],
+    "token-validity": 900,
+    "refresh-token-validity": 86400,
+    "credential-types": ["binding-secret"]
+  }
+}
+
