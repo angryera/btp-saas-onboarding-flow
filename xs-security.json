@@ -49,7 +49,11 @@
     }
   ],
   "oauth2-configuration": {
-    "redirect-uris": ["https://*.cfapps.*.hana.ondemand.com/**"],
+    "redirect-uris": [
+      "https://*.cfapps.*.hana.ondemand.com/**",
+      "https://oauth.pstmn.io/v1/callback",
+      "http://localhost:8080/**"
+    ],
     "token-validity": 900,
     "refresh-token-validity": 86400,
     "credential-types": ["binding-secret"]
