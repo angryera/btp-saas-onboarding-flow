@@ -1,13 +1,12 @@
 ## 17. What did you do when the subscribe callback was retried? Show the exact idempotency key you chose and why.
 
-**What I did**
+I assumed the SaaS Provisioning Service can (and will) retry callbacks, so the subscribe handler is **idempotent**.
 
-- I treated the subscribe callback as **idempotent** and safe to retry.
-- Tenant creation is implemented as an **upsert**:
-  - If tenant doesn’t exist → create `tenants` row (`status=ACTIVE`).
-  - If tenant exists and is soft-deleted → “reactivate” (`deleted_at=NULL`, `status=ACTIVE`).
-  - If tenant already active → only update `updated_at`.
-- Audit writes are protected by a **unique idempotency key** to prevent duplicate rows.
+- Tenant creation is effectively an **upsert**:
+  - If the tenant doesn’t exist yet, I create a row in `tenants` with `status=ACTIVE`.
+  - If the tenant exists but was previously unsubscribed, I “reactivate” it by setting `deleted_at=NULL` and `status=ACTIVE`.
+  - If the tenant is already active, I only touch `updated_at`.
+- Audit entries are deduped using a **unique idempotency key** (so a retry doesn’t spam audit rows).
 
 **Exact idempotency key**
 
@@ -15,7 +14,7 @@ The subscribe handler uses:
 
 `subscribe:${tenantId}:${subscribedSubaccountId}:${requestedBy}`
 
-Implemented in `server.js` as:
+Where the parts come from in `server.js`:
 
 - `tenantId`: from the callback path
 - `subscribedSubaccountId`: from `body.subscribedSubaccountId` (or fallback `body.subaccountId`)
@@ -23,16 +22,16 @@ Implemented in `server.js` as:
 
 **Why**
 
-- SaaS Provisioning retries can replay the exact same event; the key must be **stable across retries**.
-- Using `tenantId` ensures we never create multiple tenant records for the same subscriber tenant.
-- Including `subscribedSubaccountId` avoids collisions if a tenantId format ever differs or is reused across landscapes.
-- Including `requestedBy` ensures we don't accidentally “dedupe” two distinct subscriptions where the provisioning caller differs (useful for audit traceability).
+- It’s **stable across retries** of the same subscription event.
+- `tenantId` is the core unique tenant identifier (so we never create two tenant records for one subscriber).
+- Adding `subscribedSubaccountId` reduces the chance of collisions if a tenantId format ever differs across landscapes.
+- Adding `requestedBy` keeps the audit trail more specific (and avoids accidentally collapsing two distinct calls that happen to use the same `tenantId`).
 
 ## 18. How did role-collection assignment work - SCIM, XSUAA REST API, or something else? What's the gotcha with assigning roles during the subscribe callback?
 
 **How it works in this repo**
 
-- I implemented role assignment via **IAS SCIM**:
+- I implemented role assignment via **IAS SCIM** (group membership):
   - Find user by `userName`
   - Find group by `displayName` (defaults to `S4_Admin`)
   - SCIM PATCH add user to group
@@ -42,15 +41,15 @@ This is coded in `src/roles.js` and enabled only when these env vars exist:
 
 **The gotcha**
 
-- During the subscribe callback, the **subscriber user may not exist yet** (no first login / no user shadow in IAS / trust not established), so assignment can fail even though provisioning is correct.
-- Role collections are a **subaccount concept**; if you're trying to assign collections in the subscriber subaccount from the provider-side callback, you need:
+- During the subscribe callback, the **user you want to grant access to might not exist yet** (no first login, no user record in IAS yet, trust not fully set up). So role assignment can fail even when provisioning itself is correct.
+- Role collections live at the **subaccount** level. If you try to assign them from the provider callback, you need:
   - The right admin permissions + API endpoints for the subscriber account, and
   - A reliable identity to target (user must be known to the IdP / IAS).
-- Practical pattern: make role assignment **best-effort + retryable**, and log failures for follow-up.
+- The practical pattern is: treat role assignment as **best-effort**, make it retryable, and **log failures** so you can fix them later.
 
 ## 19. If you had to support 1000 tenants instead of 10, what's the first thing that breaks in your design?
 
-**First breaking point: single shared DB + synchronous request path**
+**First breaking point: single shared DB + synchronous callback work**
 
 - This minimal implementation uses a single SQLite file DB and performs writes directly in the HTTP request.
 - At 1000 tenants (and many concurrent subscriptions/unsubscriptions), you'd hit:
@@ -59,14 +58,14 @@ This is coded in `src/roles.js` and enabled only when these env vars exist:
 
 **First fix**
 
-- Move persistence to **SAP HANA Cloud** (or another managed DB) and
-- Decouple provisioning side effects (role assignment, downstream calls) using a **queue / async job** so subscribe callbacks remain fast and reliable.
+- Move persistence to **SAP HANA Cloud** (or another managed DB).
+- Push side effects (role assignment, downstream calls) into a **queue / async job** so the subscribe callback stays fast and reliable.
 
 ## 20. What's the exact difference between a role-template, a role, and a role-collection in XSUAA - and why does it matter here?
 
-- **Role-template**: a *definition shipped by the app* in `xs-security.json` that bundles scopes (and optional attributes). It’s not assigned directly to users.
-- **Role (role instance)**: a concrete role created from a role-template in a specific subaccount; it represents an assignable unit **inside the subaccount**, but still typically not assigned to users directly.
-- **Role-collection**: a container of roles intended for assignment to **users**. This is what administrators actually assign.
+- **Role-template**: a role definition shipped with the app in `xs-security.json` (it bundles scopes, and optionally attributes). You don’t assign role-templates directly to users.
+- **Role (role instance)**: a concrete role created from a role-template inside a specific subaccount.
+- **Role-collection**: what you actually assign to users. It groups one or more role instances into something admins can manage easily.
 
 **Why it matters here**
 
@@ -74,5 +73,5 @@ This is coded in `src/roles.js` and enabled only when these env vars exist:
   - Shipping a scope `$XSAPPNAME.PlatformAdmin`
   - Shipping a role-template `PlatformAdmin` that references that scope
   - Shipping a role-collection `S4_Platform_Admin` that references the `PlatformAdmin` template
-- This makes it easy for subaccount admins to assign **one role collection** (`S4_Platform_Admin`) to the correct operators, and ensures regular tenant users get **403**.
+- This keeps the operational step simple: assign **one role collection** (`S4_Platform_Admin`) to platform operators, and everyone else correctly gets **403**.
 

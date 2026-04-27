@@ -179,7 +179,7 @@ app.delete('/callback/v1.0/tenants/:tenantId', async (req, res) => {
 });
 
 // Platform admin endpoint
-app.get('/tenants', requireJwt(passport), requireScope('$XSAPPNAME.PlatformAdmin'), (req, res) => {
+app.get('/tenants', requireJwt(passport), requireScope('PlatformAdmin'), (req, res) => {
   const rows = db.prepare(
     `SELECT tenant_id, subdomain, status, created_at, updated_at, deleted_at
      FROM tenants
